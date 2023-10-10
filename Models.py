@@ -8,12 +8,12 @@ import torch.utils.data as data_utils
 class Net(nn.Module):
     def __init__(self): #Define the layers
         super(Net, self).__init__()
-        self.relu=nn.ReLU()     
+        self.relu=nn.ReLU()   
         self.fc1 = nn.Linear(200, 100)
         self.fc2 = nn.Linear(100, 100)
         self.fc3 = nn.Linear(100, 50)
     
-    def encoder(self, x):     
+    def encoder(self, x): 
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
@@ -35,7 +35,6 @@ class GAS_Net(nn.Module):
         self.fc1 = nn.Linear(200, 100)
         self.fc2 = nn.Linear(100, 100)
         self.fc3 = nn.Linear(100, 50)
-        #self.output = nn.Linear(250, 50, bias=False)
         self.sigma_layer = nn.Linear(200, 50)
         self.mu_layer = nn.Linear(200, 50)
     
@@ -71,6 +70,7 @@ class GAS_Net(nn.Module):
             sigma_encoded = self.sigma_layer(sigma_vector)
             encoded = torch.mul(encoded, sigma_encoded)
             #Sum the encoded x with an new encoding of the mean
+            print(sigma_encoded)
             mu_encoded = self.mu_layer(mu_vector)
             output = torch.add(encoded, mu_encoded)
             
@@ -91,8 +91,8 @@ class Revin_Net(nn.Module):
         self.fc3 = nn.Linear(100, 50)
         self.revin_layer = RevIN(1)
     
-    def encoder(self, x):     
-        x = self.fc1(x)
+    def encoder(self, x):    
+        x = self.fc1(x) 
         x = self.relu(x)
         x = self.fc2(x)
         x = self.relu(x)

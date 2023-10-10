@@ -1,4 +1,5 @@
 from scipy.optimize import minimize
+from scipy.special import gamma
 import numpy as np
 
 #Score Driven Normalization Gaussian Process
@@ -7,9 +8,12 @@ import numpy as np
 #The function takes the single time series to normalize, the training data to fit the static parameters and outputs
 #the normalized time series and the lists of mean and variances
 #The mode (predict or update) let us choose if we want to normalize the data with the previous prediction or with the current updated parameters
+#Norm strength is a chosen parameter that let us choose the strength of the normalization for sigma and mu
 
-def SD_Normalization_Gaussian(y, y_train, regularization, mode='predict'):
+def SD_Normalization_Gaussian(y, y_train, regularization, mode='predict', norm_strength=[1,1]):
     alpha_mu, alpha_sigma, mu_0, sigma2_0 = Optimized_params_Gaussian(y_train, regularization)
+    alpha_sigma = alpha_sigma * norm_strength[1]
+    alpha_mu = alpha_mu * norm_strength[0]
 
     T = len(y)
     mu_list, sigma2_list = np.zeros(T), np.ones(T)
@@ -23,7 +27,10 @@ def SD_Normalization_Gaussian(y, y_train, regularization, mode='predict'):
             mu_list[t], sigma2_list[t] = Update_function_Gaussian(regularization, y[t], mu_list[t-1], sigma2_list[t-1], alpha_mu, alpha_sigma)
         
         if mode == 'predict':
-            y_normalized[t] = (y[t]-mu_list[t-1])/np.sqrt(sigma2_list[t-1])
+            if t == 0:
+                y_normalized[t] = (y[t]-mu_0)/np.sqrt(sigma2_0)
+            else:
+                y_normalized[t] = (y[t]-mu_list[t-1])/np.sqrt(sigma2_list[t-1])
         elif mode == 'update':
             y_normalized[t] = (y[t]-mu_list[t])/np.sqrt(sigma2_list[t])
         else:
@@ -76,6 +83,7 @@ def neg_log_likelihood_Gaussian(params, y, regularization):
 
 def Optimized_params_Gaussian(y, regularization, initial_guesses= np.array([0.001, 0.001, 0, 1])):
 
+    #The bounds are defined to avoid negative intial variance and learning rates outside the interval (0,1)
     bounds = ((0, 1), (0, 1), (None, None), (0.00001, 1))
     optimal = minimize(lambda params: neg_log_likelihood_Gaussian(params, y, regularization), x0=initial_guesses, bounds=bounds)
     
@@ -84,3 +92,85 @@ def Optimized_params_Gaussian(y, regularization, initial_guesses= np.array([0.00
 
     return alpha_mu, alpha_sigma, mu_0, sigma2_0
   
+#######################################################################################################à
+
+
+#Score Driven Normalization Student-t
+#Note that the sigma2 needs a tranformation to be the correct variance of the Student distribution
+def SD_Normalization_Student(y, y_train, mode='predict', norm_strength=[0.5, 0.5]):
+    alpha_mu, alpha_sigma, mu_0, sigma2_0, nu = Optimized_params_Student(y_train, norm_strength)
+
+    T = len(y)
+    mu_list, sigma2_list = np.zeros(T), np.ones(T)
+    y_normalized = np.zeros(T)
+
+    for t in range(0, T):
+        if t == 0:
+            #At the first step, we update starting from the inizialization parameters
+            mu_list[t], sigma2_list[t] = Update_function_Student(y[t], mu_0, sigma2_0, alpha_mu, alpha_sigma, nu, norm_strength)
+        else:
+            mu_list[t], sigma2_list[t] = Update_function_Student(y[t], mu_list[t-1], sigma2_list[t-1], alpha_mu, alpha_sigma, nu, norm_strength)
+        
+        if mode == 'predict':
+            if t == 0:
+                y_normalized[t] = (y[t]-mu_0)/np.sqrt(sigma2_0 * nu / (nu - 2))
+            else:
+                y_normalized[t] = (y[t]-mu_list[t-1])/np.sqrt(sigma2_list[t-1] * nu / (nu - 2))
+        elif mode == 'update':
+            y_normalized[t] = (y[t]-mu_list[t])/np.sqrt(sigma2_list[t] * nu / (nu - 2))
+        else:
+            print('Error: mode must be predict or update')
+    
+    sigma2_list = sigma2_list * nu / (nu - 2)
+    return mu_list, sigma2_list, y_normalized
+
+
+#Define the Update function for the Student parameters. It updates the mean and the variance at each new observation
+def Update_function_Student(y_t, mu_t, sigma2_t, alpha_mu, alpha_sigma, nu, norm_strength):
+    
+    mu_updated= mu_t + ((norm_strength[0]) / (1 - norm_strength[0])) * alpha_mu * (y_t - mu_t) / (1 + (y_t - mu_t) ** 2 / (nu * sigma2_t))
+    sigma2_updated= sigma2_t + ((norm_strength[1]) / (1 - norm_strength[1])) * alpha_sigma*((nu + 1) * (y_t - mu_t)**2 / (nu +  (y_t - mu_t)**2 / sigma2_t)  - sigma2_t)
+
+    return mu_updated, sigma2_updated
+
+
+#Define the likelihood function for the Student case
+def neg_log_likelihood_Student(params, y, norm_strength):
+    alpha_mu, alpha_sigma, mu_0, sigma2_0, nu = params
+
+    T = len(y)
+    mu_list, sigma2_list = np.zeros(T), np.zeros(T)
+    log_likelihood_list = np.zeros(T)
+    y = np.append(y, y[T-1])
+
+
+
+    for t in range(0, T):
+        if t == 0:
+            #At the first step, we update starting from the inizialization parameters
+            mu_list[t], sigma2_list[t] = Update_function_Student(y[t], mu_0, sigma2_0, alpha_mu, alpha_sigma, nu, norm_strength)
+            penalty_term_mu = 0.5 * (1 - norm_strength[0]) * (mu_list[t] - mu_0)**2
+            penalty_term_sigma2 = 0.5 * (1 - norm_strength[1]) * (sigma2_list[t] - sigma2_0)**2
+        else:
+            mu_list[t], sigma2_list[t] = Update_function_Student(y[t], mu_list[t-1], sigma2_list[t-1], alpha_mu, alpha_sigma, nu, norm_strength)
+            penalty_term_mu = 0.5 * (1 - norm_strength[0]) * (mu_list[t] - mu_list[t-1])**2
+            penalty_term_sigma2 = 0.5 * (1 - norm_strength[1]) * (sigma2_list[t] - sigma2_list[t-1])**2
+
+        log_likelihood_list[t] = np.log(gamma((nu + 1) / 2)) - np.log(gamma(nu / 2)) - 0.5 * np.log(np.pi * nu) - 0.5 * np.log(sigma2_list[t]) - ((nu + 1) / 2) * np.log(1 + (y[t+1] - mu_list[t]) ** 2 / (nu * sigma2_list[t])) 
+        log_likelihood_list[t] = (norm_strength[0] + norm_strength[1]) * log_likelihood_list[t] - penalty_term_mu - penalty_term_sigma2
+        
+    neg_log_lokelihood = -np.sum(log_likelihood_list)
+
+    return neg_log_lokelihood/T
+
+#Define the optimization function that optimize the likelihood function
+
+def Optimized_params_Student(y, norm_strength, initial_guesses= np.array([0.001, 0.001, 0, 1, 3]),):
+
+    #The bounds are defined to avoid negative intial variance and learning rates outside the interval (0,1)
+    bounds = ((0, 1), (0, 1), (None, None), (0.00001, 1), (2.00001, 50))
+    optimal = minimize(lambda params: neg_log_likelihood_Student(params, y, norm_strength), x0=initial_guesses, bounds=bounds)
+    
+    alpha_mu, alpha_sigma, mu_0, sigma2_0, nu = optimal.x
+    print('Optimal parameters:  alpha_mu = {},  alpha_sigma = {}, mu_0 = {}, sigma2_0 = {}, nu = {}'.format(alpha_mu, alpha_sigma, mu_0, sigma2_0, nu))
+    return alpha_mu, alpha_sigma, mu_0, sigma2_0, nu
