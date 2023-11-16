@@ -13,7 +13,7 @@ def series_generator(n_samples, growing=True):
         A = 130
         b = -0.2
 
-    f = 1
+    f = 1.25
     phi = 0
     w = 2*math.pi*f
     T = 1/f
