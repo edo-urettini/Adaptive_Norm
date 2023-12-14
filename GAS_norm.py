@@ -161,17 +161,17 @@ def neg_log_likelihood_Student(params, y, norm_strength):
         log_likelihood_list[t] = np.log(gamma((nu + 1) / 2)) - np.log(gamma(nu / 2)) - 0.5 * np.log(np.pi * nu) - 0.5 * np.log(sigma2_list[t]) - ((nu + 1) / 2) * np.log(1 + (y[t+1] - mu_list[t]) ** 2 / (nu * sigma2_list[t])) 
         log_likelihood_list[t] = (norm_strength[0] + norm_strength[1]) * log_likelihood_list[t] - penalty_term_mu - penalty_term_sigma2
         
-    neg_log_lokelihood = -np.sum(log_likelihood_list)
+    neg_log_lokelihood = -np.sum(log_likelihood_list)/T
 
-    return neg_log_lokelihood/T
+    return neg_log_lokelihood
 
 #Define the optimization function that optimize the likelihood function
 
-def Optimized_params_Student(y, norm_strength, initial_guesses= np.array([0.001, 0.001, 1, 1, 0, 0, 0, 1, 3]),):
+def Optimized_params_Student(y, norm_strength, initial_guesses= np.array([0.001, 0.001, 0.5, 0.5, 0, 1, 0, 1, 100]),):
 
     #The bounds are defined to avoid negative intial variance and learning rates outside the interval (0,1)
-    bounds = ((0, 1), (0, 1), (0, 1), (0, 1), (None, None), (0.000001, None), (None, None), (0.000001, None), (2.00001, 50))
-    optimal = minimize(lambda params: neg_log_likelihood_Student(params, y, norm_strength), x0=initial_guesses, bounds=bounds)
+    bounds = ((0, 1), (0, 1), (0, 1), (0, 1), (None, None), (0.000001, None), (None, None), (0.000001, None), (0, 100))
+    optimal = minimize(lambda params: neg_log_likelihood_Student(params, y, norm_strength), x0=initial_guesses, bounds=bounds, options={'maxiter': 1000}, method='Powell')
     
     alpha_mu, alpha_sigma, beta_mu, beta_sigma, omega_mu, omega_sigma, mu_0, sigma2_0, nu = optimal.x
     print('Optimal parameters:  alpha_mu = {},  alpha_sigma = {}, mu_0 = {}, sigma2_0 = {}, beta_mu = {}, beta_sigma = {}, omega_mu = {}, omega_sigma = {}, nu = {}'.format(alpha_mu, alpha_sigma, mu_0, sigma2_0, beta_mu, beta_sigma, omega_mu, omega_sigma, nu))
